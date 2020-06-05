@@ -21,50 +21,6 @@ function getTargetPos(text, target) {
   return null;
 }
 
-function blockify(text) {
-  let searchIdx = 0;
-  let selector = null;
-  const regexOpen = /\s*([:.#\w\s-]+)\s*\n?\{/i;
-  const blocks = { [NODECONTENT_KEY]: {} };
-  while ((selector = regexOpen.exec(text.slice(searchIdx))) !== null) {
-    const preText = text.slice(searchIdx, selector.index).trim();
-    if (preText) {
-      const rules = preText.split(';');
-      for (const rule of rules) {
-        if (rule.trim().length) {
-          const [ruleLabel, ruleVal] = rule.split(':');
-          blocks[NODECONTENT_KEY][ruleLabel.trim()] = ruleVal.trim();
-        }
-      }
-    }
-
-    const blockContentIdx = searchIdx + selector.index + selector[0].length;
-    const closingPos = blockContentIdx + closingTagPos(text.slice(blockContentIdx));
-    const updatedText = text.slice(selector.index, closingPos + 1);
-    const { label, value } = labelify(updatedText, selector[1].trim());
-    blocks[label] = blockify(value);
-
-    searchIdx = closingPos + 1;
-  }
-
-  const postText = text.slice(searchIdx).trim();
-  if (postText) {
-    const rules = postText.split(';');
-    for (const rule of rules) {
-      if (rule.trim().length) {
-        const [ruleLabel, ruleVal] = rule.split(':');
-        blocks[NODECONTENT_KEY][ruleLabel.trim()] = ruleVal.trim();
-      }
-    }
-  }
-
-  if (_.isEmpty(blocks[NODECONTENT_KEY])) {
-    delete blocks[NODECONTENT_KEY];
-  }
-
-  return blocks;
-}
-
 function closingTagPos(text, openTag = '{', closingTag = '}') {
   let balance = 1;
   const chain = text.split('');
@@ -102,30 +58,6 @@ function labelify(text, selector) {
   throw Error('Missing selector in text.');
 }
 
-function buildCssFromJs(obj) {
-  let text = '';
-  for (const key in (obj || {})) {
-    if (key !== NODECONTENT_KEY) {
-      text += `${key} { \n`;
-      text += `\t${buildCssFromJs(obj[key])}\n`;
-      text += '}\n\n';
-    } else {
-      const rules = _.toPairs(obj[key])
-        .map(([prop, val]) => `${prop}: ${val}`)
-        .join(';');
-      text += `${rules};\n`;
-    }
-  }
-
-  return text;
-}
-
-function mergeStyles(target, toMerge) {
-  return _.mergeWith(
-    target, toMerge,
-    (objValue, srcValue) => (_.isArray(objValue) ? objValue.concat(srcValue) : undefined));
-}
-
 module.exports = ({ text, target, ignore }) => {
   let updatedText = text;
 
@@ -143,11 +75,8 @@ module.exports = ({ text, target, ignore }) => {
     updatedText = `${updatedText.slice(0, targetPos.start)}\n${updatedText.slice(targetPos.end + 1)}`;
 
     const { value } = labelify(targetBlockText, target);
-    targetBlock = blockify(value);
+    updatedText = updatedText.trim() + '\n' + value + '\n';
   }
 
-  let blocks = blockify(updatedText);
-  blocks = mergeStyles(blocks, targetBlock);
-
-  return buildCssFromJs(blocks);
+  return updatedText;
 };
